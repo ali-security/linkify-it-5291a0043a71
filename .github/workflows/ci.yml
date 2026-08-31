@@ -1,14 +1,17 @@
 name: CI
 
 on:
-  push:
-  pull_request:
-  schedule:
-    - cron: '0 0 * * 3'
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'Optional mocha spec selector; empty runs the full suite'
+        required: false
+        default: ''
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     strategy:
       matrix:
@@ -23,12 +26,24 @@ jobs:
       with:
         node-version: ${{ matrix.node-version }}
 
+    - name: Pin registry to the release-date time machine
+      run: |
+        npm config set registry https://time-machines-npm.sealsecurity.io/
+        npm config set //time-machines-npm.sealsecurity.io/:_authToken=2023-12-01T21:47:27.805000Z
+
     - run: npm install
 
     - name: Test
-      run: npm test
+      run: |
+        npm run build
+        npx c8 --exclude build --exclude test -r text -r html -r lcov mocha ${{ inputs.test-filter }}
 
-    - name: Upload coverage report to coveralls.io
-      uses: coverallsapp/github-action@master
+    - name: Pack
+      run: npm pack
+
+    - name: Upload package tarball
+      uses: actions/upload-artifact@v4
       with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        name: npm-tarball
+        path: '*.tgz'
+        if-no-files-found: error
